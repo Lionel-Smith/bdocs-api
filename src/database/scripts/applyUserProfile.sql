@@ -1,0 +1,1 @@
+ALTER USER online_claims PROFILE ADMIN_PROFILE

@@ -1,0 +1,1 @@
+CREATE USER online_claims IDENTIFIED BY Welcome1
