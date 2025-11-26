@@ -5,18 +5,26 @@ verify_ssl = true
 
 [dev-packages]
 pylint = "*"
+pytest = "~=7.4"
+pytest-asyncio = "~=0.21"
+pytest-cov = "~=4.1"
+pytest-mock = "~=3.12"
+httpx = "~=0.25"
+faker = "~=20.1"
 
 [packages]
-flask-cors = "*"
-flask = "*"
-cx-oracle = "*"
-flask-jwt-extended = "*"
+quart = "~=0.19"
+quart-cors = "~=0.7"
+quart-auth = "~=0.9"
+pydantic = "~=2.5"
+# cx-oracle = "~=8.3"  # Optional - requires Oracle Instant Client
 ldap3 = "*"
-wfastcgi = "*"
-mock = "*"
 python-dateutil = "*"
-flask-sqlalchemy = "*"
-flask-migrate = "*"
+hypercorn = "~=0.15"
+redis = {extras = ["hiredis"], version = "~=5.0"}
+alembic = "~=1.13"
+asyncpg = "~=0.29"
+sqlalchemy = {extras = ["asyncio"], version = "~=2.0"}
 
 [requires]
-python_version = "3.7"
+python_version = "3.11"
