@@ -1,6 +1,6 @@
-from quart_auth import AuthManager
+from quart_auth import QuartAuth
 
-auth_manager = AuthManager()
+auth_manager = QuartAuth()
 
 
 def init_extensions(app):

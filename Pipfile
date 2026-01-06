@@ -25,6 +25,7 @@ redis = {extras = ["hiredis"], version = "~=5.0"}
 alembic = "~=1.13"
 asyncpg = "~=0.29"
 sqlalchemy = {extras = ["asyncio"], version = "~=2.0"}
+python-dotenv = "*"
 
 [requires]
 python_version = "3.11"

@@ -1,6 +1,9 @@
 import os
+from dotenv import load_dotenv
 
-FLASK_ENV = "production"
+load_dotenv()
+
+FLASK_ENV = os.getenv("FLASK_ENV", "production")
 
 
 class OracleDB:
@@ -15,20 +18,20 @@ class OracleDB:
 
 
 class PostgresDB:
-    host = "localhost"
-    port = 5432
-    username = "postgres"
-    password = "postgres"
-    database = "flask_backend"
+    host = os.getenv("POSTGRES_HOST", "localhost")
+    port = int(os.getenv("POSTGRES_PORT", "5432"))
+    username = os.getenv("POSTGRES_USER", "postgres")
+    password = os.getenv("POSTGRES_PASSWORD", "postgres")
+    database = os.getenv("POSTGRES_DB", "flask_backend")
 
 
 class JWTConfig:
-    secret = "jwt_secret"
+    secret = os.getenv("JWT_SECRET_KEY", "jwt_secret")
 
 
 class Flask:
-    host = "0.0.0.0"  # '172.16.1.172'
-    port = 5000
+    host = os.getenv("APP_HOST", "0.0.0.0")
+    port = int(os.getenv("APP_PORT", "5000"))
     protocol = "http" if FLASK_ENV == "development" else "https"
     admin_host = "staging-claims-admin-api.nib-bahamas.com"
     admin_port = 443
@@ -74,9 +77,9 @@ class RateLimiter:
 
 
 class RedisDB:
-    host = "localhost"  # Changed from "redis" to "localhost" for local development
-    port = 6379
-    REDIS_URL = f"redis://{host}:{port}"
+    host = os.getenv("REDIS_HOST", "localhost")
+    port = int(os.getenv("REDIS_PORT", "6379"))
+    REDIS_URL = os.getenv("REDIS_URL", f"redis://{host}:{port}")
 
 
 class MinIO:

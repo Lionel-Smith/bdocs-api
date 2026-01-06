@@ -70,12 +70,12 @@ async def load_controllers(app: Quart):
 
 def register_error_handlers(app: Quart):
     """Register global error handlers"""
-    from quart.exceptions import HTTPException
+    from werkzeug.exceptions import HTTPException
     import json
 
     @app.errorhandler(HTTPException)
     async def handle_http_exception(e):
-        response = await e.get_response()
+        response = e.get_response()
         response.data = json.dumps({
             "code": e.code,
             "name": e.name,
