@@ -2,8 +2,8 @@
 """
 BDOCS Prison Information System - Seed Data Runner
 
-Sessions: BD-SEED-01, BD-SEED-02, BD-SEED-03, BD-SEED-04, BD-SEED-05
-Purpose: Seed housing units, BTVI programmes, system users, test inmates, and clemency reference data
+Sessions: BD-SEED-01, BD-SEED-02
+Purpose: Seed housing units, BTVI programmes, and system users
 
 Usage:
     cd bdocs-api
@@ -13,8 +13,6 @@ Options:
     --housing-only    Seed only housing units
     --programmes-only Seed only programmes
     --users-only      Seed only system users
-    --inmates-only    Seed only test inmates
-    --inmate-count N  Number of inmates to generate (default: 100)
     --clear           Clear existing seed data before seeding
     --verify          Verify seed data without inserting
 """
@@ -35,17 +33,11 @@ from src.database.async_db import init_db, async_pg_engine
 from scripts.seeds.housing_units import HOUSING_UNITS, HOUSING_STATS
 from scripts.seeds.btvi_programmes import ALL_PROGRAMMES, PROGRAMME_STATS
 from scripts.seeds.users import SYSTEM_USERS, USER_STATS, DEFAULT_PASSWORD
-from scripts.seeds.test_inmates import TEST_INMATES, INMATE_STATS, generate_test_inmates
 
 # Import reference data (not stored in database, used for lookups)
 from scripts.seeds.courts import BAHAMAS_COURTS, COURT_STATS
 from scripts.seeds.islands import BAHAMAS_ISLANDS, ISLAND_STATS
 from scripts.seeds.agencies import RELATED_AGENCIES, AGENCY_STATS
-from scripts.seeds.clemency import (
-    ADVISORY_COMMITTEE_MEMBERS, COMMITTEE_STATS,
-    CLEMENCY_TYPES, CLEMENCY_TYPE_STATS,
-    LICENSE_CONDITIONS, LICENSE_CONDITION_STATS,
-)
 
 # Password hashing
 try:
@@ -77,7 +69,7 @@ async def verify_prerequisites():
         tables_check = await conn.execute(text("""
             SELECT table_name FROM information_schema.tables
             WHERE table_schema = 'public'
-            AND table_name IN ('housing_units', 'programmes', 'users', 'inmates', 'housing_assignments')
+            AND table_name IN ('housing_units', 'programmes', 'users')
         """))
         tables = [row[0] for row in tables_check.fetchall()]
 
@@ -94,16 +86,6 @@ async def verify_prerequisites():
         if 'users' not in tables:
             print("ERROR: users table does not exist.")
             print("Create auth module and run migrations.")
-            return False
-
-        if 'inmates' not in tables:
-            print("ERROR: inmates table does not exist.")
-            print("Run: pipenv run alembic upgrade head")
-            return False
-
-        if 'housing_assignments' not in tables:
-            print("ERROR: housing_assignments table does not exist.")
-            print("Run: pipenv run alembic upgrade head")
             return False
 
         print("Database prerequisites verified.")
@@ -355,150 +337,6 @@ async def seed_users(conn, clear_existing: bool = False):
     return inserted == len(SYSTEM_USERS)
 
 
-async def seed_inmates(conn, count: int = 100, clear_existing: bool = False):
-    """Seed test inmates data with housing assignments."""
-    print(f"\n--- Seeding Test Inmates ({count} inmates) ---")
-
-    # Generate inmates (or use pre-generated if count matches)
-    if count == 100:
-        inmates = TEST_INMATES
-    else:
-        inmates = generate_test_inmates(count)
-
-    # Get housing unit IDs
-    housing_result = await conn.execute(text("SELECT id, code FROM housing_units"))
-    housing_units = {row[1]: row[0] for row in housing_result.fetchall()}
-
-    if not housing_units:
-        print("ERROR: No housing units found. Run housing seed first.")
-        return False
-
-    now = datetime.now(timezone.utc)
-
-    if clear_existing:
-        print("Clearing existing test inmates...")
-        # Delete housing assignments for test inmates first
-        await conn.execute(text("""
-            DELETE FROM housing_assignments
-            WHERE inmate_id IN (
-                SELECT id FROM inmates WHERE booking_number LIKE 'BDOCS-%'
-            )
-        """))
-        await conn.execute(text("DELETE FROM inmates WHERE booking_number LIKE 'BDOCS-%'"))
-        print("Existing test inmates cleared.")
-
-    inserted = 0
-    assignments_created = 0
-
-    for inmate in inmates:
-        try:
-            # Check if booking number already exists
-            existing = await conn.execute(text(
-                "SELECT id FROM inmates WHERE booking_number = :bn"
-            ).bindparams(bn=inmate["booking_number"]))
-
-            if existing.fetchone():
-                continue
-
-            # Get housing unit ID
-            unit_code = inmate["housing_unit_code"]
-            unit_id = housing_units.get(unit_code)
-
-            if not unit_id:
-                print(f"  WARNING: Housing unit {unit_code} not found, skipping {inmate['booking_number']}")
-                continue
-
-            # Insert inmate
-            await conn.execute(text("""
-                INSERT INTO inmates (
-                    id, booking_number, first_name, middle_name, last_name,
-                    gender, date_of_birth, nationality, island_of_origin,
-                    status, security_level, admission_date,
-                    height_cm, weight_kg, eye_color, hair_color,
-                    emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
-                    is_deleted, inserted_by, inserted_date
-                ) VALUES (
-                    CAST(:inmate_id AS uuid), :booking_number, :first_name, :middle_name, :last_name,
-                    CAST(:gender AS gender_enum), :date_of_birth, :nationality, :island_of_origin,
-                    CAST(:status AS inmate_status_enum), CAST(:security_level AS security_level_enum), :admission_date,
-                    :height_cm, :weight_kg, :eye_color, :hair_color,
-                    :emergency_contact_name, :emergency_contact_phone, :emergency_contact_relationship,
-                    false, 'seed_script', :inserted_date
-                )
-            """).bindparams(
-                inmate_id=str(inmate["id"]),
-                booking_number=inmate["booking_number"],
-                first_name=inmate["first_name"],
-                middle_name=inmate["middle_name"],
-                last_name=inmate["last_name"],
-                gender=inmate["gender"],
-                date_of_birth=inmate["date_of_birth"],
-                nationality=inmate["nationality"],
-                island_of_origin=inmate["island_of_origin"],
-                status=inmate["status"],
-                security_level=inmate["security_level"],
-                admission_date=inmate["admission_date"],
-                height_cm=inmate["height_cm"],
-                weight_kg=inmate["weight_kg"],
-                eye_color=inmate["eye_color"],
-                hair_color=inmate["hair_color"],
-                emergency_contact_name=inmate["emergency_contact"]["name"] if inmate.get("emergency_contact") else None,
-                emergency_contact_phone=inmate["emergency_contact"]["phone"] if inmate.get("emergency_contact") else None,
-                emergency_contact_relationship=inmate["emergency_contact"]["relationship"] if inmate.get("emergency_contact") else None,
-                inserted_date=now,
-            ))
-            inserted += 1
-
-            # Create housing assignment
-            import uuid
-            assignment_id = str(uuid.uuid4())
-            await conn.execute(text("""
-                INSERT INTO housing_assignments (
-                    id, inmate_id, housing_unit_id, assigned_date, is_current,
-                    reason, is_deleted, inserted_by, inserted_date
-                ) VALUES (
-                    CAST(:assignment_id AS uuid), CAST(:assign_inmate_id AS uuid), CAST(:unit_id AS uuid), :assigned_date, true,
-                    'Initial assignment on admission', false, 'seed_script', :assign_inserted_date
-                )
-            """).bindparams(
-                assignment_id=assignment_id,
-                assign_inmate_id=str(inmate["id"]),
-                unit_id=str(unit_id),
-                assigned_date=inmate["admission_date"],
-                assign_inserted_date=now,
-            ))
-            assignments_created += 1
-
-            # Log progress every 10 inmates
-            if inserted % 10 == 0:
-                print(f"  Progress: {inserted}/{len(inmates)} inmates seeded...")
-
-        except Exception as e:
-            print(f"  ERROR seeding {inmate['booking_number']}: {e}")
-
-    # Calculate and display statistics
-    from scripts.seeds.test_inmates import calculate_statistics
-    stats = calculate_statistics(inmates)
-
-    print(f"\nInmates Summary:")
-    print(f"  Total Generated: {len(inmates)}")
-    print(f"  Inserted: {inserted}")
-    print(f"  Housing Assignments: {assignments_created}")
-    print(f"\n  Demographics:")
-    print(f"    Gender: {stats['gender']['male']} male ({stats['gender']['male_pct']}), "
-          f"{stats['gender']['female']} female ({stats['gender']['female_pct']})")
-    print(f"    Status: {stats['status']['remand']} remand ({stats['status']['remand_pct']}), "
-          f"{stats['status']['sentenced']} sentenced ({stats['status']['sentenced_pct']})")
-    print(f"    Nationality: {stats['nationality']['bahamian']} Bahamian, "
-          f"{stats['nationality']['foreign']} foreign ({stats['nationality']['foreign_pct']})")
-
-    print(f"\n  By Housing Unit:")
-    for unit, unit_count in sorted(stats["by_unit"].items()):
-        print(f"    {unit}: {unit_count}")
-
-    return inserted == len(inmates)
-
-
 async def verify_seed_data():
     """Verify seed data without inserting."""
     print("\n=== Seed Data Verification ===\n")
@@ -532,90 +370,9 @@ async def verify_seed_data():
     print("\n  Users:")
     for user in SYSTEM_USERS:
         ext = "(ext)" if user.get("is_external") else ""
-        unit = user.get("assigned_unit") or "-"
-        shift = user.get("shift") or "-"
-        print(f"    {user['username']:15} | {user['role']:12} | {unit:10} | {shift:7} | "
+        unit = user.get("assigned_unit", "-")
+        print(f"    {user['username']:15} | {user['role']:12} | {unit:10} | "
               f"{user['first_name']} {user['last_name']} {ext}")
-
-    # Reference Data (not in database)
-    print("\n" + "-" * 60)
-    print("REFERENCE DATA (Static lookups, not in database)")
-    print("-" * 60)
-
-    print("\nBahamian Courts:")
-    print(f"  Total: {COURT_STATS['total_courts']}")
-    print(f"  Folio Integrated: {COURT_STATS['folio_integrated']}")
-    print("\n  Courts:")
-    for court in BAHAMAS_COURTS:
-        folio = "[FOLIO]" if court["has_folio_integration"] else ""
-        print(f"    {court['code']:8} | {court['court_type']:15} | {court['location']:12} | "
-              f"{court['name'][:35]} {folio}")
-
-    print("\nBahamian Islands:")
-    print(f"  Total: {ISLAND_STATS['total_islands']}")
-    print(f"  2022 Population: {ISLAND_STATS['total_population_2022']:,}")
-    print(f"  Estimated Prison Pop: {ISLAND_STATS['total_prison_estimate']:,}")
-    print("\n  Top Islands by Prison Population:")
-    sorted_islands = sorted(
-        [i for i in BAHAMAS_ISLANDS if i["prison_population_estimate"] > 0],
-        key=lambda x: x["prison_population_estimate"],
-        reverse=True
-    )[:10]
-    for island in sorted_islands:
-        pct = island["population_weight"] * 100
-        print(f"    {island['name']:20} | {island['prison_population_estimate']:4} inmates | "
-              f"{pct:5.1f}% weight")
-
-    print("\nRelated Agencies:")
-    print(f"  Total: {AGENCY_STATS['total_agencies']}")
-    print(f"  With API: {AGENCY_STATS['with_api']}")
-    print("\n  Agencies:")
-    for agency in RELATED_AGENCIES:
-        api = "[API]" if agency.get("api_endpoint") else ""
-        print(f"    {agency['code']:10} | {agency['type']:15} | {agency['name'][:40]} {api}")
-
-    print("\nAdvisory Committee on Prerogative of Mercy:")
-    print(f"  Total Members: {COMMITTEE_STATS['total_members']}")
-    print(f"  Ex-Officio: {COMMITTEE_STATS['ex_officio_members']}")
-    print(f"  Appointed: {COMMITTEE_STATS['appointed_members']}")
-    print("\n  Members:")
-    for member in ADVISORY_COMMITTEE_MEMBERS:
-        ex_off = "(ex-officio)" if member["is_ex_officio"] else ""
-        print(f"    {member['position']:15} | {member['name'][:30]} {ex_off}")
-
-    print("\nClemency Types (Prerogative of Mercy):")
-    print(f"  Total Types: {CLEMENCY_TYPE_STATS['total_types']}")
-    print("\n  Types:")
-    for ctype in CLEMENCY_TYPES:
-        print(f"    {ctype['code']:12} | {ctype['name']}")
-        print(f"                   {ctype['constitutional_basis']}")
-
-    print("\nLicense Conditions (Early Release):")
-    print(f"  Total Conditions: {LICENSE_CONDITION_STATS['total_conditions']}")
-    print(f"  Standard: {LICENSE_CONDITION_STATS['standard_conditions']}")
-    print(f"  By Category: {LICENSE_CONDITION_STATS['by_category']}")
-    print("\n  Conditions:")
-    for cond in LICENSE_CONDITIONS:
-        std = "[STD]" if cond["is_standard"] else ""
-        print(f"    {cond['code']:12} | {cond['category']:12} | {cond['name'][:30]} {std}")
-
-    # Test Inmates (generated data)
-    print("\n" + "-" * 60)
-    print("TEST INMATES (Generated demo data)")
-    print("-" * 60)
-
-    print(f"\nTest Inmates Available: {INMATE_STATS['total']}")
-    print(f"  Gender: {INMATE_STATS['gender']['male']} male ({INMATE_STATS['gender']['male_pct']}), "
-          f"{INMATE_STATS['gender']['female']} female ({INMATE_STATS['gender']['female_pct']})")
-    print(f"  Status: {INMATE_STATS['status']['remand']} remand ({INMATE_STATS['status']['remand_pct']}), "
-          f"{INMATE_STATS['status']['sentenced']} sentenced ({INMATE_STATS['status']['sentenced_pct']})")
-    print(f"  Nationality: {INMATE_STATS['nationality']['bahamian']} Bahamian, "
-          f"{INMATE_STATS['nationality']['foreign']} foreign ({INMATE_STATS['nationality']['foreign_pct']})")
-    print(f"\n  Sample Inmates:")
-    for inmate in TEST_INMATES[:5]:
-        island = inmate["island_of_origin"] or "Foreign"
-        print(f"    {inmate['booking_number']} | {inmate['last_name']:12} | "
-              f"{inmate['gender']:6} | {inmate['status']:9} | {island[:15]}")
 
     print("\n=== Verification Complete ===")
 
@@ -624,15 +381,13 @@ async def run_seeds(
     housing_only: bool = False,
     programmes_only: bool = False,
     users_only: bool = False,
-    inmates_only: bool = False,
-    inmate_count: int = 100,
     clear: bool = False,
     verify: bool = False
 ):
     """Main seed runner."""
     print("=" * 60)
     print("BDOCS Prison Information System - Seed Data Runner")
-    print(f"Sessions: BD-SEED-01, BD-SEED-02, BD-SEED-03, BD-SEED-04, BD-SEED-05")
+    print(f"Sessions: BD-SEED-01, BD-SEED-02")
     print(f"Timestamp: {datetime.now().isoformat()}")
     print("=" * 60)
 
@@ -647,7 +402,7 @@ async def run_seeds(
     from src.database.async_db import async_pg_engine as engine
 
     # Determine what to seed
-    seed_all = not (housing_only or programmes_only or users_only or inmates_only)
+    seed_all = not (housing_only or programmes_only or users_only)
 
     async with engine.begin() as conn:
         success = True
@@ -664,10 +419,6 @@ async def run_seeds(
             users_success = await seed_users(conn, clear_existing=clear)
             success = success and users_success
 
-        if seed_all or inmates_only:
-            inmates_success = await seed_inmates(conn, count=inmate_count, clear_existing=clear)
-            success = success and inmates_success
-
         if success:
             print("\n" + "=" * 60)
             print("SEED COMPLETED SUCCESSFULLY")
@@ -683,7 +434,7 @@ async def run_seeds(
 def main():
     """CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="BDOCS Seed Data Runner - Housing Units, Programmes, Users & Inmates"
+        description="BDOCS Seed Data Runner - Housing Units, Programmes & Users"
     )
     parser.add_argument(
         "--housing-only",
@@ -699,17 +450,6 @@ def main():
         "--users-only",
         action="store_true",
         help="Seed only system users"
-    )
-    parser.add_argument(
-        "--inmates-only",
-        action="store_true",
-        help="Seed only test inmates"
-    )
-    parser.add_argument(
-        "--inmate-count",
-        type=int,
-        default=100,
-        help="Number of test inmates to generate (default: 100)"
     )
     parser.add_argument(
         "--clear",
@@ -728,8 +468,6 @@ def main():
         housing_only=args.housing_only,
         programmes_only=args.programmes_only,
         users_only=args.users_only,
-        inmates_only=args.inmates_only,
-        inmate_count=args.inmate_count,
         clear=args.clear,
         verify=args.verify
     ))

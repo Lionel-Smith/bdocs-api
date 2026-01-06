@@ -2,8 +2,8 @@
 """
 BDOCS Prison Information System - Seed Data Runner
 
-Sessions: BD-SEED-01, BD-SEED-02, BD-SEED-03, BD-SEED-04, BD-SEED-05
-Purpose: Seed housing units, BTVI programmes, system users, test inmates, and clemency reference data
+Sessions: BD-SEED-01, BD-SEED-02, BD-SEED-03, BD-SEED-04
+Purpose: Seed housing units, BTVI programmes, system users, and test inmates
 
 Usage:
     cd bdocs-api
@@ -41,11 +41,6 @@ from scripts.seeds.test_inmates import TEST_INMATES, INMATE_STATS, generate_test
 from scripts.seeds.courts import BAHAMAS_COURTS, COURT_STATS
 from scripts.seeds.islands import BAHAMAS_ISLANDS, ISLAND_STATS
 from scripts.seeds.agencies import RELATED_AGENCIES, AGENCY_STATS
-from scripts.seeds.clemency import (
-    ADVISORY_COMMITTEE_MEMBERS, COMMITTEE_STATS,
-    CLEMENCY_TYPES, CLEMENCY_TYPE_STATS,
-    LICENSE_CONDITIONS, LICENSE_CONDITION_STATS,
-)
 
 # Password hashing
 try:
@@ -418,15 +413,15 @@ async def seed_inmates(conn, count: int = 100, clear_existing: bool = False):
                     emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
                     is_deleted, inserted_by, inserted_date
                 ) VALUES (
-                    CAST(:inmate_id AS uuid), :booking_number, :first_name, :middle_name, :last_name,
-                    CAST(:gender AS gender_enum), :date_of_birth, :nationality, :island_of_origin,
-                    CAST(:status AS inmate_status_enum), CAST(:security_level AS security_level_enum), :admission_date,
+                    :id, :booking_number, :first_name, :middle_name, :last_name,
+                    :gender, :date_of_birth, :nationality, :island_of_origin,
+                    :status, :security_level, :admission_date,
                     :height_cm, :weight_kg, :eye_color, :hair_color,
                     :emergency_contact_name, :emergency_contact_phone, :emergency_contact_relationship,
                     false, 'seed_script', :inserted_date
                 )
             """).bindparams(
-                inmate_id=str(inmate["id"]),
+                id=str(inmate["id"]),
                 booking_number=inmate["booking_number"],
                 first_name=inmate["first_name"],
                 middle_name=inmate["middle_name"],
@@ -457,15 +452,15 @@ async def seed_inmates(conn, count: int = 100, clear_existing: bool = False):
                     id, inmate_id, housing_unit_id, assigned_date, is_current,
                     reason, is_deleted, inserted_by, inserted_date
                 ) VALUES (
-                    CAST(:assignment_id AS uuid), CAST(:assign_inmate_id AS uuid), CAST(:unit_id AS uuid), :assigned_date, true,
-                    'Initial assignment on admission', false, 'seed_script', :assign_inserted_date
+                    :id, :inmate_id, :housing_unit_id, :assigned_date, true,
+                    'Initial assignment on admission', false, 'seed_script', :inserted_date
                 )
             """).bindparams(
-                assignment_id=assignment_id,
-                assign_inmate_id=str(inmate["id"]),
-                unit_id=str(unit_id),
+                id=assignment_id,
+                inmate_id=str(inmate["id"]),
+                housing_unit_id=str(unit_id),
                 assigned_date=inmate["admission_date"],
-                assign_inserted_date=now,
+                inserted_date=now,
             ))
             assignments_created += 1
 
@@ -574,31 +569,6 @@ async def verify_seed_data():
         api = "[API]" if agency.get("api_endpoint") else ""
         print(f"    {agency['code']:10} | {agency['type']:15} | {agency['name'][:40]} {api}")
 
-    print("\nAdvisory Committee on Prerogative of Mercy:")
-    print(f"  Total Members: {COMMITTEE_STATS['total_members']}")
-    print(f"  Ex-Officio: {COMMITTEE_STATS['ex_officio_members']}")
-    print(f"  Appointed: {COMMITTEE_STATS['appointed_members']}")
-    print("\n  Members:")
-    for member in ADVISORY_COMMITTEE_MEMBERS:
-        ex_off = "(ex-officio)" if member["is_ex_officio"] else ""
-        print(f"    {member['position']:15} | {member['name'][:30]} {ex_off}")
-
-    print("\nClemency Types (Prerogative of Mercy):")
-    print(f"  Total Types: {CLEMENCY_TYPE_STATS['total_types']}")
-    print("\n  Types:")
-    for ctype in CLEMENCY_TYPES:
-        print(f"    {ctype['code']:12} | {ctype['name']}")
-        print(f"                   {ctype['constitutional_basis']}")
-
-    print("\nLicense Conditions (Early Release):")
-    print(f"  Total Conditions: {LICENSE_CONDITION_STATS['total_conditions']}")
-    print(f"  Standard: {LICENSE_CONDITION_STATS['standard_conditions']}")
-    print(f"  By Category: {LICENSE_CONDITION_STATS['by_category']}")
-    print("\n  Conditions:")
-    for cond in LICENSE_CONDITIONS:
-        std = "[STD]" if cond["is_standard"] else ""
-        print(f"    {cond['code']:12} | {cond['category']:12} | {cond['name'][:30]} {std}")
-
     # Test Inmates (generated data)
     print("\n" + "-" * 60)
     print("TEST INMATES (Generated demo data)")
@@ -624,15 +594,13 @@ async def run_seeds(
     housing_only: bool = False,
     programmes_only: bool = False,
     users_only: bool = False,
-    inmates_only: bool = False,
-    inmate_count: int = 100,
     clear: bool = False,
     verify: bool = False
 ):
     """Main seed runner."""
     print("=" * 60)
     print("BDOCS Prison Information System - Seed Data Runner")
-    print(f"Sessions: BD-SEED-01, BD-SEED-02, BD-SEED-03, BD-SEED-04, BD-SEED-05")
+    print(f"Sessions: BD-SEED-01, BD-SEED-02")
     print(f"Timestamp: {datetime.now().isoformat()}")
     print("=" * 60)
 
@@ -647,7 +615,7 @@ async def run_seeds(
     from src.database.async_db import async_pg_engine as engine
 
     # Determine what to seed
-    seed_all = not (housing_only or programmes_only or users_only or inmates_only)
+    seed_all = not (housing_only or programmes_only or users_only)
 
     async with engine.begin() as conn:
         success = True
@@ -664,10 +632,6 @@ async def run_seeds(
             users_success = await seed_users(conn, clear_existing=clear)
             success = success and users_success
 
-        if seed_all or inmates_only:
-            inmates_success = await seed_inmates(conn, count=inmate_count, clear_existing=clear)
-            success = success and inmates_success
-
         if success:
             print("\n" + "=" * 60)
             print("SEED COMPLETED SUCCESSFULLY")
@@ -683,7 +647,7 @@ async def run_seeds(
 def main():
     """CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="BDOCS Seed Data Runner - Housing Units, Programmes, Users & Inmates"
+        description="BDOCS Seed Data Runner - Housing Units, Programmes & Users"
     )
     parser.add_argument(
         "--housing-only",
@@ -699,17 +663,6 @@ def main():
         "--users-only",
         action="store_true",
         help="Seed only system users"
-    )
-    parser.add_argument(
-        "--inmates-only",
-        action="store_true",
-        help="Seed only test inmates"
-    )
-    parser.add_argument(
-        "--inmate-count",
-        type=int,
-        default=100,
-        help="Number of test inmates to generate (default: 100)"
     )
     parser.add_argument(
         "--clear",
@@ -728,8 +681,6 @@ def main():
         housing_only=args.housing_only,
         programmes_only=args.programmes_only,
         users_only=args.users_only,
-        inmates_only=args.inmates_only,
-        inmate_count=args.inmate_count,
         clear=args.clear,
         verify=args.verify
     ))

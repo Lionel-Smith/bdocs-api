@@ -574,31 +574,6 @@ async def verify_seed_data():
         api = "[API]" if agency.get("api_endpoint") else ""
         print(f"    {agency['code']:10} | {agency['type']:15} | {agency['name'][:40]} {api}")
 
-    print("\nAdvisory Committee on Prerogative of Mercy:")
-    print(f"  Total Members: {COMMITTEE_STATS['total_members']}")
-    print(f"  Ex-Officio: {COMMITTEE_STATS['ex_officio_members']}")
-    print(f"  Appointed: {COMMITTEE_STATS['appointed_members']}")
-    print("\n  Members:")
-    for member in ADVISORY_COMMITTEE_MEMBERS:
-        ex_off = "(ex-officio)" if member["is_ex_officio"] else ""
-        print(f"    {member['position']:15} | {member['name'][:30]} {ex_off}")
-
-    print("\nClemency Types (Prerogative of Mercy):")
-    print(f"  Total Types: {CLEMENCY_TYPE_STATS['total_types']}")
-    print("\n  Types:")
-    for ctype in CLEMENCY_TYPES:
-        print(f"    {ctype['code']:12} | {ctype['name']}")
-        print(f"                   {ctype['constitutional_basis']}")
-
-    print("\nLicense Conditions (Early Release):")
-    print(f"  Total Conditions: {LICENSE_CONDITION_STATS['total_conditions']}")
-    print(f"  Standard: {LICENSE_CONDITION_STATS['standard_conditions']}")
-    print(f"  By Category: {LICENSE_CONDITION_STATS['by_category']}")
-    print("\n  Conditions:")
-    for cond in LICENSE_CONDITIONS:
-        std = "[STD]" if cond["is_standard"] else ""
-        print(f"    {cond['code']:12} | {cond['category']:12} | {cond['name'][:30]} {std}")
-
     # Test Inmates (generated data)
     print("\n" + "-" * 60)
     print("TEST INMATES (Generated demo data)")
@@ -632,7 +607,7 @@ async def run_seeds(
     """Main seed runner."""
     print("=" * 60)
     print("BDOCS Prison Information System - Seed Data Runner")
-    print(f"Sessions: BD-SEED-01, BD-SEED-02, BD-SEED-03, BD-SEED-04, BD-SEED-05")
+    print(f"Sessions: BD-SEED-01, BD-SEED-02, BD-SEED-03, BD-SEED-04")
     print(f"Timestamp: {datetime.now().isoformat()}")
     print("=" * 60)
 
