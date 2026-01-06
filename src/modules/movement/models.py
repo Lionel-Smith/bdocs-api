@@ -105,9 +105,9 @@ class Movement(UUIDMixin, SoftDeleteMixin, AuditMixin, AsyncBase):
 
     # Relationships
     inmate = relationship('Inmate', back_populates='movements', lazy='selectin')
+    # Court appearance link - no back_populates since there's bidirectional FKs
     court_appearance = relationship(
         'CourtAppearance',
-        back_populates='movement',
         lazy='selectin',
         foreign_keys=[court_appearance_id]
     )

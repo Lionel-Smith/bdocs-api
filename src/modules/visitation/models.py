@@ -48,7 +48,7 @@ class ApprovedVisitor(AsyncBase, UUIDMixin, SoftDeleteMixin, AuditMixin):
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
 
-    relationship: Mapped[Relationship] = mapped_column(
+    visitor_relationship: Mapped[Relationship] = mapped_column(
         ENUM(Relationship, name='relationship_enum', create_type=False),
         nullable=False
     )

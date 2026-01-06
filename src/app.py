@@ -52,20 +52,42 @@ async def create_app() -> Quart:
 
 
 async def load_controllers(app: Quart):
-    """Dynamically load all *_controller.py files"""
+    """Dynamically load all controller files from modules"""
     root_path = os.path.dirname(os.path.dirname(__file__))
-    pattern = os.path.join(root_path, "src", "**", "*_controller.py")
 
-    for filepath in glob.glob(pattern, recursive=True):
-        module_name = os.path.basename(filepath)[:-3]
-        spec = importlib.util.spec_from_file_location(module_name, filepath)
-        if spec and spec.loader:
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
+    # Pattern 1: modules/*/controller.py (standard module pattern)
+    module_pattern = os.path.join(root_path, "src", "modules", "*", "controller.py")
 
-            # Register blueprint if controller defines one
-            if hasattr(mod, 'blueprint'):
-                app.register_blueprint(mod.blueprint)
+    # Pattern 2: *_controller.py anywhere (legacy pattern)
+    legacy_pattern = os.path.join(root_path, "src", "**", "*_controller.py")
+
+    loaded_blueprints = set()
+
+    for pattern in [module_pattern, legacy_pattern]:
+        for filepath in glob.glob(pattern, recursive=True):
+            # Skip duplicate files (e.g., "controller 2.py")
+            if " " in filepath:
+                continue
+
+            module_name = os.path.basename(os.path.dirname(filepath)) + "_controller"
+
+            # Avoid loading the same blueprint twice
+            if module_name in loaded_blueprints:
+                continue
+
+            spec = importlib.util.spec_from_file_location(module_name, filepath)
+            if spec and spec.loader:
+                try:
+                    mod = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(mod)
+
+                    # Register blueprint if controller defines one
+                    if hasattr(mod, 'blueprint'):
+                        app.register_blueprint(mod.blueprint)
+                        loaded_blueprints.add(module_name)
+                        print(f"Registered blueprint: {mod.blueprint.name}")
+                except Exception as e:
+                    print(f"WARNING: Failed to load {module_name}: {e}")
 
 
 def register_error_handlers(app: Quart):

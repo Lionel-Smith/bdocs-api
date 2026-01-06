@@ -232,7 +232,8 @@ class CourtAppearance(AsyncBase, UUIDMixin, SoftDeleteMixin, AuditMixin):
     # Relationships
     court_case = relationship('CourtCase', back_populates='appearances', lazy='selectin')
     inmate = relationship('Inmate', back_populates='court_appearances', lazy='selectin')
-    movement = relationship('Movement', back_populates='court_appearance', lazy='selectin')
+    # Movement for transport - use foreign_keys since there's bidirectional FKs
+    movement = relationship('Movement', lazy='selectin', foreign_keys=[movement_id])
 
     def __repr__(self) -> str:
         return f"<CourtAppearance {self.appearance_type} on {self.appearance_date.date()}>"
