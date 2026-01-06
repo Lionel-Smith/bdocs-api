@@ -11,6 +11,7 @@ pytest-cov = "~=4.1"
 pytest-mock = "~=3.12"
 httpx = "~=0.25"
 faker = "~=20.1"
+psycopg2-binary = "*"
 
 [packages]
 quart = "~=0.19"
