@@ -54,10 +54,10 @@ class CertificationDTO(BaseModel):
     """Certification entry in staff record."""
     model_config = ConfigDict(from_attributes=True)
 
-    type: str = Field(..., description="Certification type")
-    date: date = Field(..., description="Date obtained")
-    expiry: Optional[date] = Field(None, description="Expiration date")
-    number: Optional[str] = Field(None, description="Certificate number")
+    cert_type: str = Field(..., description="Certification type")
+    obtained_date: date = Field(..., description="Date obtained")
+    expiry_date: Optional[date] = Field(None, description="Expiration date")
+    cert_number: Optional[str] = Field(None, description="Certificate number")
 
 
 class StaffDTO(BaseModel):
