@@ -36,6 +36,8 @@ from scripts.seeds.housing_units import HOUSING_UNITS, HOUSING_STATS
 from scripts.seeds.btvi_programmes import ALL_PROGRAMMES, PROGRAMME_STATS
 from scripts.seeds.users import SYSTEM_USERS, USER_STATS, DEFAULT_PASSWORD
 from scripts.seeds.test_inmates import TEST_INMATES, INMATE_STATS, generate_test_inmates
+from scripts.seeds.staff import STAFF_MEMBERS, STAFF_TRAINING, STAFF_STATS
+from scripts.seeds.reports import REPORT_DEFINITIONS, REPORT_STATS
 
 # Import reference data (not stored in database, used for lookups)
 from scripts.seeds.courts import BAHAMAS_COURTS, COURT_STATS
@@ -499,6 +501,193 @@ async def seed_inmates(conn, count: int = 100, clear_existing: bool = False):
     return inserted == len(inmates)
 
 
+async def seed_staff(conn, clear_existing: bool = False):
+    """Seed staff records linked to users."""
+    print("\n--- Seeding Staff Records ---")
+
+    if clear_existing:
+        print("Clearing existing staff records...")
+        await conn.execute(text("DELETE FROM staff_training"))
+        await conn.execute(text("DELETE FROM staff"))
+        print("Existing staff records cleared.")
+
+    # Check existing count
+    result = await conn.execute(text("SELECT COUNT(*) FROM staff"))
+    existing_count = result.scalar()
+
+    if existing_count > 0 and not clear_existing:
+        print(f"WARNING: {existing_count} staff records already exist.")
+        print("Use --clear to remove existing data first.")
+        return False
+
+    now = datetime.now(timezone.utc)
+    inserted = 0
+    training_inserted = 0
+
+    for staff in STAFF_MEMBERS:
+        try:
+            await conn.execute(text("""
+                INSERT INTO staff (
+                    id, user_id, employee_number, first_name, last_name,
+                    rank, department, hire_date, status, phone,
+                    emergency_contact_name, emergency_contact_phone,
+                    is_active, is_deleted, inserted_by, inserted_date
+                ) VALUES (
+                    CAST(:id AS uuid), CAST(:user_id AS uuid), :employee_number, :first_name, :last_name,
+                    CAST(:rank AS staff_rank_enum), CAST(:department AS department_enum),
+                    :hire_date, CAST(:status AS staff_status_enum), :phone,
+                    :emergency_contact_name, :emergency_contact_phone,
+                    :is_active, false, 'seed_script', :inserted_date
+                )
+                ON CONFLICT (employee_number) DO UPDATE SET
+                    first_name = EXCLUDED.first_name,
+                    last_name = EXCLUDED.last_name,
+                    rank = EXCLUDED.rank,
+                    department = EXCLUDED.department,
+                    phone = EXCLUDED.phone,
+                    updated_by = 'seed_script',
+                    updated_date = EXCLUDED.inserted_date
+            """), {
+                "id": staff["id"],
+                "user_id": staff["user_id"],
+                "employee_number": staff["employee_number"],
+                "first_name": staff["first_name"],
+                "last_name": staff["last_name"],
+                "rank": staff["rank"],
+                "department": staff["department"],
+                "hire_date": staff["hire_date"],
+                "status": staff["status"],
+                "phone": staff["phone"],
+                "emergency_contact_name": staff.get("emergency_contact_name"),
+                "emergency_contact_phone": staff.get("emergency_contact_phone"),
+                "is_active": staff["is_active"],
+                "inserted_date": now,
+            })
+            inserted += 1
+            print(f"  Seeded: {staff['employee_number']} - {staff['first_name']} {staff['last_name']} ({staff['rank']})")
+        except Exception as e:
+            print(f"  ERROR seeding {staff['employee_number']}: {e}")
+
+    # Seed training records
+    for training in STAFF_TRAINING:
+        try:
+            await conn.execute(text("""
+                INSERT INTO staff_training (
+                    id, staff_id, training_type, training_date, expiry_date,
+                    hours, instructor, certification_number, is_current,
+                    inserted_by, inserted_date
+                ) VALUES (
+                    CAST(:id AS uuid), CAST(:staff_id AS uuid),
+                    CAST(:training_type AS training_type_enum), :training_date, :expiry_date,
+                    :hours, :instructor, :certification_number, :is_current,
+                    'seed_script', :inserted_date
+                )
+            """), {
+                "id": training["id"],
+                "staff_id": training["staff_id"],
+                "training_type": training["training_type"],
+                "training_date": training["training_date"],
+                "expiry_date": training.get("expiry_date"),
+                "hours": training["hours"],
+                "instructor": training["instructor"],
+                "certification_number": training.get("certification_number"),
+                "is_current": training["is_current"],
+                "inserted_date": now,
+            })
+            training_inserted += 1
+        except Exception as e:
+            print(f"  ERROR seeding training: {e}")
+
+    print(f"\nStaff Summary:")
+    print(f"  Total Staff: {STAFF_STATS['total_staff']}")
+    print(f"  By Department:")
+    for dept, count in STAFF_STATS['by_department'].items():
+        if count > 0:
+            print(f"    {dept}: {count}")
+    print(f"  Staff Inserted: {inserted}")
+    print(f"  Training Records Inserted: {training_inserted}")
+
+    return inserted == len(STAFF_MEMBERS)
+
+
+async def seed_reports(conn, clear_existing: bool = False):
+    """Seed report definitions."""
+    print("\n--- Seeding Report Definitions ---")
+
+    if clear_existing:
+        print("Clearing existing report definitions...")
+        await conn.execute(text("DELETE FROM report_executions"))
+        await conn.execute(text("DELETE FROM report_definitions"))
+        print("Existing report definitions cleared.")
+
+    # Check existing count
+    result = await conn.execute(text("SELECT COUNT(*) FROM report_definitions"))
+    existing_count = result.scalar()
+
+    if existing_count > 0 and not clear_existing:
+        print(f"WARNING: {existing_count} report definitions already exist.")
+        print("Use --clear to remove existing data first.")
+        return False
+
+    now = datetime.now(timezone.utc)
+    inserted = 0
+
+    for report in REPORT_DEFINITIONS:
+        try:
+            await conn.execute(text("""
+                INSERT INTO report_definitions (
+                    id, code, name, description, category, output_format,
+                    parameters_schema, is_scheduled, schedule_cron,
+                    created_by, inserted_by, inserted_date
+                ) VALUES (
+                    CAST(:id AS uuid), :code, :name, :description,
+                    CAST(:category AS report_category_enum),
+                    CAST(:output_format AS output_format_enum),
+                    CAST(:parameters_schema AS jsonb), :is_scheduled, :schedule_cron,
+                    CAST(:created_by AS uuid), 'seed_script', :inserted_date
+                )
+                ON CONFLICT (code) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    description = EXCLUDED.description,
+                    category = EXCLUDED.category,
+                    output_format = EXCLUDED.output_format,
+                    parameters_schema = EXCLUDED.parameters_schema,
+                    is_scheduled = EXCLUDED.is_scheduled,
+                    schedule_cron = EXCLUDED.schedule_cron,
+                    updated_by = 'seed_script',
+                    updated_date = EXCLUDED.inserted_date
+            """), {
+                "id": report["id"],
+                "code": report["code"],
+                "name": report["name"],
+                "description": report.get("description"),
+                "category": report["category"],
+                "output_format": report["output_format"],
+                "parameters_schema": json.dumps(report.get("parameters_schema")) if report.get("parameters_schema") else None,
+                "is_scheduled": report["is_scheduled"],
+                "schedule_cron": report.get("schedule_cron"),
+                "created_by": report["created_by"],
+                "inserted_date": now,
+            })
+            inserted += 1
+            scheduled_tag = "[Scheduled]" if report["is_scheduled"] else "[Ad-hoc]"
+            print(f"  Seeded: {report['code']} - {report['name']} {scheduled_tag}")
+        except Exception as e:
+            print(f"  ERROR seeding {report['code']}: {e}")
+
+    print(f"\nReport Definitions Summary:")
+    print(f"  Total Definitions: {REPORT_STATS['total_definitions']}")
+    print(f"  By Category:")
+    for cat, count in REPORT_STATS['by_category'].items():
+        if count > 0:
+            print(f"    {cat}: {count}")
+    print(f"  Scheduled: {REPORT_STATS['scheduled_reports']}")
+    print(f"  Ad-hoc: {REPORT_STATS['ad_hoc_reports']}")
+    print(f"  Definitions Inserted: {inserted}")
+
+    return inserted == len(REPORT_DEFINITIONS)
+
+
 async def verify_seed_data():
     """Verify seed data without inserting."""
     print("\n=== Seed Data Verification ===\n")
@@ -625,6 +814,8 @@ async def run_seeds(
     programmes_only: bool = False,
     users_only: bool = False,
     inmates_only: bool = False,
+    staff_only: bool = False,
+    reports_only: bool = False,
     inmate_count: int = 100,
     clear: bool = False,
     verify: bool = False
@@ -632,7 +823,7 @@ async def run_seeds(
     """Main seed runner."""
     print("=" * 60)
     print("BDOCS Prison Information System - Seed Data Runner")
-    print(f"Sessions: BD-SEED-01, BD-SEED-02, BD-SEED-03, BD-SEED-04, BD-SEED-05")
+    print(f"Sessions: BD-SEED-01 through BD-SEED-07")
     print(f"Timestamp: {datetime.now().isoformat()}")
     print("=" * 60)
 
@@ -647,7 +838,7 @@ async def run_seeds(
     from src.database.async_db import async_pg_engine as engine
 
     # Determine what to seed
-    seed_all = not (housing_only or programmes_only or users_only or inmates_only)
+    seed_all = not (housing_only or programmes_only or users_only or inmates_only or staff_only or reports_only)
 
     async with engine.begin() as conn:
         success = True
@@ -668,6 +859,16 @@ async def run_seeds(
             inmates_success = await seed_inmates(conn, count=inmate_count, clear_existing=clear)
             success = success and inmates_success
 
+        # Staff requires users to be seeded first
+        if seed_all or staff_only:
+            staff_success = await seed_staff(conn, clear_existing=clear)
+            success = success and staff_success
+
+        # Reports requires users to be seeded first
+        if seed_all or reports_only:
+            reports_success = await seed_reports(conn, clear_existing=clear)
+            success = success and reports_success
+
         if success:
             print("\n" + "=" * 60)
             print("SEED COMPLETED SUCCESSFULLY")
@@ -683,7 +884,7 @@ async def run_seeds(
 def main():
     """CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="BDOCS Seed Data Runner - Housing Units, Programmes, Users & Inmates"
+        description="BDOCS Seed Data Runner - Housing Units, Programmes, Users, Inmates, Staff & Reports"
     )
     parser.add_argument(
         "--housing-only",
@@ -704,6 +905,16 @@ def main():
         "--inmates-only",
         action="store_true",
         help="Seed only test inmates"
+    )
+    parser.add_argument(
+        "--staff-only",
+        action="store_true",
+        help="Seed only staff records (requires users to be seeded)"
+    )
+    parser.add_argument(
+        "--reports-only",
+        action="store_true",
+        help="Seed only report definitions (requires users to be seeded)"
     )
     parser.add_argument(
         "--inmate-count",
@@ -729,6 +940,8 @@ def main():
         programmes_only=args.programmes_only,
         users_only=args.users_only,
         inmates_only=args.inmates_only,
+        staff_only=args.staff_only,
+        reports_only=args.reports_only,
         inmate_count=args.inmate_count,
         clear=args.clear,
         verify=args.verify
